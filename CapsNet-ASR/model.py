@@ -1,8 +1,6 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.autograd import Variable
-import numpy as np
 
 
 class CapsuleLayer(nn.Module):
@@ -39,7 +37,7 @@ class CapsuleLayer(nn.Module):
             x = torch.stack([x] * self.num_capsules, dim=2).unsqueeze(4)
             W = torch.cat([self.W] * batch_size, dim=0)
             u_hat = torch.matmul(W, x)
-            b_ij = Variable(torch.zeros(1, self.num_route_nodes, self.num_capsules, 1)).cuda()
+            b_ij = torch.zeros(1, self.num_route_nodes, self.num_capsules, 1).to(x.device)
 
             for iteration in range(self.num_iterations):
                 c_ij = F.softmax(b_ij, dim=-1)
@@ -97,7 +95,7 @@ class CapsuleNet(nn.Module):
         if y is None:
             # In all batches, get the most active capsule.
             _, max_length_indices = classes.max(dim=1)
-            y = Variable(torch.eye(self.num_classes)).cuda().index_select(dim=0, index=max_length_indices)
+            y = torch.eye(self.num_classes).to(x.device).index_select(dim=0, index=max_length_indices)
 
         reconstructions = self.decoder((x * y[:, :, None, None]).view(x.size(0), -1))
         reconstructions = reconstructions.view(-1, 1, 15, 16)

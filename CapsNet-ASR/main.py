@@ -1,11 +1,8 @@
-import numpy as np
-from utils import get_timit_dict, get_batch_data, TimitDataset
-from model import CapsuleNet, ConvNet
 import torch
 from torch import optim
-from torch.autograd import Variable
-import copy
-from sklearn.metrics import accuracy_score
+
+from model import CapsuleNet, ConvNet
+from utils import get_timit_dict, get_batch_data, TimitDataset
 
 # initialize parameters
 labels = get_timit_dict("phonedict.txt")
@@ -17,8 +14,8 @@ rate = 16000  # 16000fps - 0.0625ms per frame
 stepsize = 64  # for spectogram reduction
 freq_bins = 32
 
-frame_size = (int)((0.060 * rate) / stepsize)  # 30ms
-frame_step = (int)((0.030 * rate) / stepsize)  # 15ms
+frame_size = int((0.060 * rate) / stepsize)  # 30ms
+frame_step = int((0.030 * rate) / stepsize)  # 15ms
 
 print("Frame size: {}, frame step size: {}".format(frame_size, frame_step))
 
@@ -54,8 +51,8 @@ def train_model(model, optimizer, num_epochs=10):
 
         for idx, (inputs, labels) in enumerate(trainloader, 0):
 
-            inputs = Variable(inputs).cuda()
-            labels = Variable(labels).cuda()
+            inputs = inputs.cuda()
+            labels = labels.cuda()
 
             optimizer.zero_grad()
 
@@ -92,8 +89,8 @@ def test_model(model):
     total = 0.0
 
     for idx, (inputs, labels) in enumerate(testloader):
-        inputs = Variable(inputs).cuda()
-        labels = Variable(labels).cuda()
+        inputs = inputs.cuda()
+        labels = labels.cuda()
 
         if model == capsnet:
             _, outputs, _ = model(inputs)

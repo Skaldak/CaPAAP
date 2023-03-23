@@ -39,8 +39,8 @@ if __name__ == "__main__":
         break
 
     criterion = Criterion()
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
-    optimizer = torch.optim.SGD(model.parameters(), lr=LR, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
+    # optimizer = torch.optim.SGD(model.parameters(), lr=LR, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, min_lr=LR * 0.01, factor=0.5, patience=5)
     scaler = torch.cuda.amp.GradScaler()
 

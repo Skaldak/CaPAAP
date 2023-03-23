@@ -39,8 +39,8 @@ if __name__ == "__main__":
         break
 
     criterion = Criterion()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
-    # optimizer = torch.optim.SGD(model.parameters(), lr=LR, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    # optimizer = torch.optim.SGD(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, min_lr=LR * 0.01, factor=0.5, patience=5)
     scaler = torch.cuda.amp.GradScaler()
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         save_model(model, optimizer, scheduler, epoch, epoch_model_path)
         print("Saved epoch model")
 
-        if valid_loss >= best_valid_loss:
+        if valid_loss <= best_valid_loss:
             best_valid_loss = valid_loss
             best_model_path = os.path.join(CKPT_DIR, "checkpoint.pth")
             save_model(model, optimizer, scheduler, epoch, best_model_path)

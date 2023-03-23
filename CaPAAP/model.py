@@ -71,7 +71,7 @@ class DigitCapsule(nn.Module):
 
     def squash(self, input_tensor):
         squared_norm = (input_tensor**2).sum(-1, keepdim=True)
-        output_tensor = squared_norm * input_tensor / ((1.0 + squared_norm) * torch.sqrt(squared_norm + 1e-6))
+        output_tensor = squared_norm * input_tensor / ((1.0 + squared_norm) * torch.sqrt(squared_norm) + 1e-8)
 
         return output_tensor
 
@@ -109,9 +109,6 @@ class CapsuleNet(nn.Module):
         x = self.primary_capsule(x)
         x = self.digit_capsule(x)
 
-        # pred_ys = x
-        # pred_y = torch.sqrt((x**2).sum(2)).squeeze()
-        # pred_y = F.softmax(pred_y, dim=-1)
         pred_y = self.classifier(x.flatten(1))
 
         if y is None:

@@ -53,8 +53,8 @@ def validate_model(model, criterion, val_loader, device="cpu"):
         x, y = x.to(device), y.to(device)
 
         with torch.inference_mode():
-            pred_ys, pred_y, pred_x = model(x)
-            loss = criterion(x, y, pred_x, pred_ys)
+            pred_x, pred_y = model(x)
+            loss = criterion(x, y, pred_x, pred_y)
 
         total_loss += float(loss)
 

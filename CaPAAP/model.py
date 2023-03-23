@@ -25,7 +25,7 @@ class PrimaryCapsule(nn.Module):
 
     def squash(self, input_tensor):
         squared_norm = (input_tensor**2).sum(-1, keepdim=True)
-        output_tensor = squared_norm * input_tensor / ((1.0 + squared_norm) * torch.sqrt(squared_norm))
+        output_tensor = squared_norm * input_tensor / ((1.0 + squared_norm) * torch.sqrt(squared_norm) + 1e-8)
 
         return output_tensor
 

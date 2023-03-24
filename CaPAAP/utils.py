@@ -69,7 +69,8 @@ def validate_model(model, criterion, val_loader, device="cpu"):
 
         batch_bar.set_postfix(
             acc="{:.04f}%".format(100 * num_correct / (TEST_BATCH_SIZE * (i + 1))),
-            loss="{:.04f}".format(float(total_loss / (i + 1))), dist="{:.04f}".format(float(vdist / (i + 1))),
+            loss="{:.04f}".format(float(total_loss / (i + 1))),
+            dist="{:.04f}".format(float(vdist / (i + 1))),
         )
 
         batch_bar.update()

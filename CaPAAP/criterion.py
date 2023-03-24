@@ -4,26 +4,20 @@ import torch.nn.functional as F
 
 
 class Criterion(nn.Module):
-    def forward(self, x, y, pred_x, pred_y):
+    def forward(self, x, y, pred_x, pred_y, gamma=5e-4):
+        margin_loss = self.margin_loss(pred_y, y)
         reconstruction_loss = self.reconstruction_loss(pred_x, x)
-        classification_loss = self.classification_loss(pred_y, y)
 
-        return reconstruction_loss * 0.0005 + classification_loss
+        return margin_loss + gamma * reconstruction_loss
 
     def classification_loss(self, pred, target):
         return F.cross_entropy(pred, F.softmax(target[:, target.shape[1] // 2], dim=-1))
 
-    def margin_loss(self, pred, target):
-        b, t, c = target.shape
-
-        v_c = torch.sqrt((pred**2).sum(dim=2, keepdim=True))
-
-        left = F.relu(0.9 - v_c).view(b, -1)
-        right = F.relu(v_c - 0.1).view(b, -1)
-
-        target = target[:, t // 2]
-        loss = target * left + 0.5 * (1.0 - target) * right
-        loss = loss.sum(dim=1).mean()
+    def margin_loss(self, logits, target, upper=0.9, lower=0.1, gamma=0.5):
+        label = F.softmax(target[:, target.shape[1] // 2], dim=-1)
+        left = F.relu(upper - logits)  # True negative
+        right = F.relu(logits - lower)  # False positive
+        loss = torch.sum(label * left) + gamma * torch.sum((1 - label) * right)
 
         return loss
 

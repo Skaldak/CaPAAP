@@ -15,7 +15,7 @@ def train_model(model, criterion, train_loader, optimizer, scaler, device="cpu")
         x, y = x.to(device), y.to(device)
 
         with torch.cuda.amp.autocast():
-            pred_x, pred_y = model(x, y=y)
+            pred_x, pred_y = model(x)
             loss = criterion(x, y, pred_x, pred_y)
 
         total_loss += loss.item()
@@ -86,7 +86,12 @@ def save_model(model, optimizer, scheduler, epoch, path):
 
 
 def load_model(path, model, optimizer=None, scheduler=None):
-    checkpoint = torch.load(path)
+    try:
+        checkpoint = torch.load(path)
+    except FileNotFoundError as e:
+        print(f"Checkpoint not found: {e}")
+        return
+
     try:
         print("Model loaded: ", model.load_state_dict(checkpoint["model_state_dict"]))
     except Exception as e:
@@ -105,4 +110,4 @@ def load_model(path, model, optimizer=None, scheduler=None):
 
     epoch = checkpoint["epoch"]
 
-    return model, optimizer, scheduler, epoch
+    return epoch

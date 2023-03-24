@@ -10,7 +10,7 @@ from config import *
 from criterion import Criterion
 from dataset import AcousticPhoneticDataset
 from model import CapsuleNet
-from utils import train_model, validate_model, save_model
+from utils import train_model, validate_model, save_model, load_model
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print("Device: ", device)
@@ -30,7 +30,9 @@ if __name__ == "__main__":
     print("Train dataset samples = {}, batches = {}".format(train_data.__len__(), len(train_loader)))
     print("Val dataset samples = {}, batches = {}".format(val_data.__len__(), len(val_loader)))
 
-    model = CapsuleNet(num_classes=NUM_PHONEME_LOGITS).to(device)
+    model = CapsuleNet(
+        num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS, window_size=WINDOW_SIZE
+    ).to(device)
     print(model)
 
     for data in train_loader:
@@ -41,7 +43,7 @@ if __name__ == "__main__":
     criterion = Criterion()
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     # optimizer = torch.optim.SGD(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, min_lr=LR * 0.01, factor=0.5, patience=5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, min_lr=LR * 0.01, factor=0.5)
     scaler = torch.cuda.amp.GradScaler()
 
     gc.collect()
@@ -50,6 +52,7 @@ if __name__ == "__main__":
     start = 0
     end = NUM_EPOCHS
     best_valid_loss = math.inf
+    load_model(os.path.join(CKPT_DIR, "checkpoint.pth"), model)
 
     for epoch in range(start, end):
         print("\nEpoch: {}/{}".format(epoch + 1, end))
@@ -61,7 +64,7 @@ if __name__ == "__main__":
         scheduler.step(train_loss)
 
         print("\tTrain Loss {:.04f}\t Learning Rate {:.07f}".format(train_loss, curr_lr))
-        print("Val Loss {:.04f}".format(valid_loss))
+        print("\tVal Loss {:.04f}".format(valid_loss))
 
         epoch_model_path = os.path.join(CKPT_DIR, f"checkpoint-{epoch}.pth")
         save_model(model, optimizer, scheduler, epoch, epoch_model_path)

@@ -5,10 +5,16 @@ from torch import nn
 from config import *
 
 
+def squash(x, dim=-1):
+    squared_norm = (x**2).sum(dim=dim, keepdim=True)
+    scale = squared_norm / (1 + squared_norm)
+    return scale * x / (squared_norm.sqrt() + 1e-8)
+
+
 class PrimaryCapsule(nn.Module):
     def __init__(self, num_capsules=8, in_channels=64, out_channels=8, kernel_size=3):
         super(PrimaryCapsule, self).__init__()
-        self.num_capsules = num_capsules
+
         self.capsules = nn.ModuleList(
             [
                 nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size)
@@ -17,17 +23,10 @@ class PrimaryCapsule(nn.Module):
         )
 
     def forward(self, x):
-        u = [capsule(x) for capsule in self.capsules]
-        u = torch.stack(u, dim=1)
-        u = u.view(x.shape[0], -1, self.num_capsules)
+        u = torch.cat([capsule(x) for capsule in self.capsules], dim=2).permute(0, 2, 1)  # [B, N_caps, C]
+        u = squash(u)  # squash along C
 
-        return self.squash(u)
-
-    def squash(self, input_tensor):
-        squared_norm = (input_tensor**2).sum(-1, keepdim=True)
-        output_tensor = squared_norm * input_tensor / ((1.0 + squared_norm) * torch.sqrt(squared_norm) + 1e-8)
-
-        return output_tensor
+        return u
 
 
 class DigitCapsule(nn.Module):
@@ -41,66 +40,53 @@ class DigitCapsule(nn.Module):
     ):
         super(DigitCapsule, self).__init__()
 
-        self.in_channels = in_channels
         self.num_routes = num_routes
         self.num_capsules = num_capsules
         self.num_iterations = num_iterations
 
-        self.W = nn.Parameter(torch.randn(1, num_routes, num_capsules, out_channels, in_channels))
+        self.W = nn.Parameter(torch.randn(1, num_capsules, num_routes, out_channels, in_channels))
 
     def forward(self, x):
-        batch_size = x.shape[0]
-        x = torch.stack([x] * self.num_capsules, dim=2).unsqueeze(4)
-
-        W = torch.cat([self.W] * batch_size, dim=0)
-        u_hat = torch.matmul(W, x)
-        b_ij = torch.zeros(1, self.num_routes, self.num_capsules, 1).to(x.device)
+        # [1, N_out_caps, N_in_caps, C_out, C_in] @ [B, 1, N_in_caps, C_in, 1] = [B, N_out_caps, N_in_caps, C_out, 1]
+        u_hat = (self.W @ x[:, None, :, :, None]).squeeze(-1)
+        b_ij = torch.zeros(1, self.num_capsules, self.num_routes, 1).to(x.device)  # [1, N_out_caps, N_in_caps, 1]
 
         for iteration in range(self.num_iterations):
-            c_ij = F.softmax(b_ij, dim=1)
-            c_ij = torch.cat([c_ij] * batch_size, dim=0).unsqueeze(4)
-
-            s_j = (c_ij * u_hat).sum(dim=1, keepdim=True)
-            v_j = self.squash(s_j)
+            c_ij = F.softmax(b_ij, dim=1)  # softmax along N_out_caps -> [1, N_out_caps, N_in_caps, 1]
+            s_j = (c_ij * u_hat).sum(dim=2)  # sum across N_in_caps -> [B, N_out_caps, C_out]
+            v_j = squash(s_j)  # squash along C -> [B, N_out_caps, C_out]
 
             if iteration < self.num_iterations - 1:
-                a_ij = torch.matmul(u_hat.transpose(3, 4), torch.cat([v_j] * self.num_routes, dim=1))
-                b_ij = b_ij + a_ij.squeeze(4).mean(dim=0, keepdim=True)
+                # [B, N_out_caps, N_in_caps, C_out, 1] @ [B, N_out_caps, C_out, 1] -> [B, N_out_caps, N_in_caps, 1]
+                a_ij = u_hat @ v_j[..., None]
+                b_ij = b_ij + a_ij  # [B, N_out_caps, N_in_caps, 1]
 
-        return v_j.squeeze(1)
-
-    def squash(self, input_tensor):
-        squared_norm = (input_tensor**2).sum(-1, keepdim=True)
-        output_tensor = squared_norm * input_tensor / ((1.0 + squared_norm) * torch.sqrt(squared_norm) + 1e-8)
-
-        return output_tensor
+        return v_j  # [B, N_out_caps, C_out]
 
 
 class CapsuleNet(nn.Module):
-    def __init__(self, num_classes=NUM_PHONEME_LOGITS):
+    def __init__(self, num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS, window_size=WINDOW_SIZE):
         super(CapsuleNet, self).__init__()
 
+        self.num_parameters = num_parameters
         self.num_classes = num_classes
-        self.project = nn.Sequential(
-            nn.Conv1d(in_channels=NUM_ACOUSTIC_PARAMETERS, out_channels=256, kernel_size=5), nn.ReLU()
-        )
+        self.window_size = window_size
+
+        self.project = nn.Sequential(nn.Conv1d(in_channels=num_parameters, out_channels=256, kernel_size=5), nn.ReLU())
         self.primary_capsule = PrimaryCapsule(
-            num_capsules=8, in_channels=256, out_channels=NUM_ACOUSTIC_PARAMETERS, kernel_size=5
+            num_capsules=num_parameters, in_channels=256, out_channels=32, kernel_size=5
         )
         self.digit_capsule = DigitCapsule(
             num_capsules=self.num_classes,
-            num_routes=NUM_ACOUSTIC_PARAMETERS * (WINDOW_SIZE - 8),
-            in_channels=8,
+            num_routes=num_parameters * (window_size - 8),
+            in_channels=32,
             out_channels=16,
         )
 
-        self.classifier = nn.Sequential(
-            nn.Linear(16 * self.num_classes, 512), nn.ReLU(inplace=True), nn.Linear(512, self.num_classes)
-        )
         self.decoder = nn.Sequential(
             nn.Linear(16 * self.num_classes, 512),
             nn.ReLU(inplace=True),
-            nn.Linear(512, WINDOW_SIZE * NUM_ACOUSTIC_PARAMETERS),
+            nn.Linear(512, window_size * num_parameters),
             nn.Sigmoid(),
         )
 
@@ -109,16 +95,15 @@ class CapsuleNet(nn.Module):
         x = self.primary_capsule(x)
         x = self.digit_capsule(x)
 
-        pred_y = self.classifier(x.flatten(1))
+        pred_y = torch.norm(x, dim=-1)
 
+        # In all batches, get the most active capsule.
         if y is None:
-            # In all batches, get the most active capsule.
-            _, max_length_indices = pred_y.max(dim=1)
-            y = torch.eye(self.num_classes).to(x.device).index_select(dim=0, index=max_length_indices)
+            y = torch.eye(self.num_classes).to(x.device).index_select(dim=0, index=torch.argmax(pred_y, dim=1))
         else:
             y = F.softmax(y[:, y.shape[1] // 2], dim=1)
 
-        pred_x = self.decoder((x * y[:, :, None, None]).view(x.shape[0], -1))
-        pred_x = pred_x.view(-1, WINDOW_SIZE, NUM_ACOUSTIC_PARAMETERS)
+        pred_x = self.decoder((x * y[:, :, None]).view(x.shape[0], -1))
+        pred_x = pred_x.view(-1, self.window_size, self.num_parameters)
 
         return pred_x, pred_y

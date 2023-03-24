@@ -17,7 +17,7 @@ class Criterion(nn.Module):
         label = F.softmax(target[:, target.shape[1] // 2], dim=-1)
         left = F.relu(upper - logits)  # True negative
         right = F.relu(logits - lower)  # False positive
-        loss = torch.sum(label * left) + gamma * torch.sum((1 - label) * right)
+        loss = (label * left + gamma * (1 - label) * right).sum(dim=1).mean()
 
         return loss
 

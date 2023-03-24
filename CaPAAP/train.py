@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
     start = 0
     end = NUM_EPOCHS
-    best_valid_loss = math.inf
+    best_valid_acc = 0.0
     load_model(os.path.join(CKPT_DIR, "checkpoint.pth"), model)
 
     for epoch in range(start, end):
@@ -59,19 +59,23 @@ if __name__ == "__main__":
 
         curr_lr = float(optimizer.param_groups[0]["lr"])
 
-        train_loss = train_model(model, criterion, train_loader, optimizer, scaler, device=device)
-        valid_loss = validate_model(model, criterion, val_loader, device=device)
+        train_acc, train_loss = train_model(model, criterion, train_loader, optimizer, scaler, device=device)
+        valid_acc, valid_loss = validate_model(model, criterion, val_loader, device=device)
         scheduler.step(train_loss)
 
-        print("\tTrain Loss {:.04f}\t Learning Rate {:.07f}".format(train_loss, curr_lr))
-        print("\tVal Loss {:.04f}".format(valid_loss))
+        print(
+            "\nEpoch {}/{}: \nTrain Acc {:.04f}%\t Train Loss {:.04f}\t Learning Rate {:.04f}".format(
+                epoch + 1, NUM_EPOCHS, train_acc, train_loss, curr_lr
+            )
+        )
+        print("Val Acc {:.04f}%\t Val Loss {:.04f}".format(valid_acc, valid_loss))
 
         epoch_model_path = os.path.join(CKPT_DIR, f"checkpoint-{epoch}.pth")
         save_model(model, optimizer, scheduler, epoch, epoch_model_path)
         print("Saved epoch model")
 
-        if valid_loss <= best_valid_loss:
-            best_valid_loss = valid_loss
+        if valid_acc >= best_valid_acc:
+            best_valid_acc = valid_acc
             best_model_path = os.path.join(CKPT_DIR, "checkpoint.pth")
             save_model(model, optimizer, scheduler, epoch, best_model_path)
             print("Saved best model")

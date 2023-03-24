@@ -1,11 +1,14 @@
 import torch
 from tqdm import tqdm
 
+from config import TRAIN_BATCH_SIZE, TEST_BATCH_SIZE
+
 
 def train_model(model, criterion, train_loader, optimizer, scaler, device="cpu"):
     model.train()
     batch_bar = tqdm(total=len(train_loader), dynamic_ncols=True, leave=False, position=0, desc="Train")
 
+    num_correct = 0
     total_loss = 0
 
     for i, data in enumerate(train_loader):
@@ -18,9 +21,12 @@ def train_model(model, criterion, train_loader, optimizer, scaler, device="cpu")
             pred_x, pred_y = model(x)
             loss = criterion(x, y, pred_x, pred_y)
 
+        num_correct += (pred_y.argmax(dim=1) == y[:, y.shape[1] // 2].argmax(dim=1)).sum().item()
         total_loss += loss.item()
 
         batch_bar.set_postfix(
+            num_correct=num_correct,
+            acc="{:.04f}%".format(100 * num_correct / (TRAIN_BATCH_SIZE * (i + 1))),
             loss="{:.04f}".format(float(total_loss / (i + 1))),
             lr="{:.06f}".format(float(optimizer.param_groups[0]["lr"])),
         )
@@ -36,15 +42,17 @@ def train_model(model, criterion, train_loader, optimizer, scaler, device="cpu")
         torch.cuda.empty_cache()
 
     batch_bar.close()  # You need this to close the tqdm bar
+    acc = 100 * num_correct / (TRAIN_BATCH_SIZE * len(train_loader))
     total_loss = total_loss / len(train_loader)
 
-    return total_loss
+    return acc, total_loss
 
 
 def validate_model(model, criterion, val_loader, device="cpu"):
     model.eval()
     batch_bar = tqdm(total=len(val_loader), dynamic_ncols=True, position=0, leave=False, desc="Val")
 
+    num_correct = 0
     total_loss = 0
     vdist = 0
 
@@ -56,10 +64,12 @@ def validate_model(model, criterion, val_loader, device="cpu"):
             pred_x, pred_y = model(x)
             loss = criterion(x, y, pred_x, pred_y)
 
+        num_correct += (pred_y.argmax(dim=1) == y[:, y.shape[1] // 2].argmax(dim=1)).sum().item()
         total_loss += float(loss)
 
         batch_bar.set_postfix(
-            loss="{:.04f}".format(float(total_loss / (i + 1))), dist="{:.04f}".format(float(vdist / (i + 1)))
+            acc="{:.04f}%".format(100 * num_correct / (TEST_BATCH_SIZE * (i + 1))),
+            loss="{:.04f}".format(float(total_loss / (i + 1))), dist="{:.04f}".format(float(vdist / (i + 1))),
         )
 
         batch_bar.update()
@@ -68,9 +78,10 @@ def validate_model(model, criterion, val_loader, device="cpu"):
         torch.cuda.empty_cache()
 
     batch_bar.close()
+    acc = 100 * num_correct / (TEST_BATCH_SIZE * len(val_loader))
     total_loss = total_loss / len(val_loader)
 
-    return total_loss
+    return acc, total_loss
 
 
 def save_model(model, optimizer, scheduler, epoch, path):

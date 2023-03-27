@@ -15,15 +15,11 @@ class PrimaryCapsule(nn.Module):
     def __init__(self, num_capsules=8, in_channels=64, out_channels=8, kernel_size=3):
         super(PrimaryCapsule, self).__init__()
 
-        self.capsules = nn.ModuleList(
-            [
-                nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size)
-                for _ in range(num_capsules)
-            ]
-        )
+        self.capsules = nn.ModuleList([nn.Conv1d(in_channels, out_channels, kernel_size) for _ in range(num_capsules)])
+        self.bn = nn.BatchNorm1d(out_channels)
 
     def forward(self, x):
-        u = torch.cat([capsule(x) for capsule in self.capsules], dim=2).permute(0, 2, 1)  # [B, N_caps, C]
+        u = self.bn(torch.cat([capsule(x) for capsule in self.capsules], dim=2)).permute(0, 2, 1)  # [B, N_caps, C]
         u = squash(u)  # squash along C
 
         return u
@@ -72,7 +68,9 @@ class CapsuleNet(nn.Module):
         self.num_classes = num_classes
         self.window_size = window_size
 
-        self.project = nn.Sequential(nn.Conv1d(in_channels=num_parameters, out_channels=256, kernel_size=5), nn.ReLU())
+        self.project = nn.Sequential(
+            nn.Conv1d(in_channels=num_parameters, out_channels=256, kernel_size=5), nn.BatchNorm1d(256), nn.ReLU()
+        )
         self.primary_capsule = PrimaryCapsule(
             num_capsules=num_parameters, in_channels=256, out_channels=32, kernel_size=5
         )
@@ -83,10 +81,15 @@ class CapsuleNet(nn.Module):
             out_channels=16,
         )
 
-        self.decoder = nn.Sequential(
-            nn.Linear(16 * self.num_classes, 512),
+        self.classifier = nn.Sequential(
+            nn.Linear(16 * self.num_classes, 256),
             nn.ReLU(inplace=True),
-            nn.Linear(512, window_size * num_parameters),
+            nn.Linear(256, self.num_classes),
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(16 * self.num_classes, 256),
+            nn.ReLU(inplace=True),
+            nn.Linear(256, window_size * num_parameters),
             nn.Sigmoid(),
         )
 
@@ -95,7 +98,9 @@ class CapsuleNet(nn.Module):
         x = self.primary_capsule(x)
         x = self.digit_capsule(x)
 
-        pred_y = torch.norm(x, dim=-1)
+        # pred_y = F.softmax(torch.norm(x, dim=-1), dim=-1)
+        # pred_y = torch.norm(x, dim=-1)
+        pred_y = F.softmax(self.classifier(x.flatten(1)), dim=-1)
 
         # In all batches, get the most active capsule.
         if y is None:
@@ -107,3 +112,24 @@ class CapsuleNet(nn.Module):
         pred_x = pred_x.view(-1, self.window_size, self.num_parameters)
 
         return pred_x, pred_y
+
+
+class DenseNet(nn.Module):
+    def __init__(self, num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS):
+        super(DenseNet, self).__init__()
+
+        self.project = nn.Sequential(
+            nn.Conv1d(num_parameters, 256, 5),
+            nn.BatchNorm1d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(256, 256, 5),
+            nn.BatchNorm1d(256),
+            nn.ReLU(inplace=True),
+        )
+        self.classifier = nn.Sequential(nn.Linear(256, 512), nn.ReLU(inplace=True), nn.Linear(512, num_classes))
+
+    def forward(self, x):
+        x = self.project(x.permute(0, 2, 1))
+        pred_y = F.softmax(self.classifier(x.flatten(1)), dim=-1)
+
+        return None, pred_y

@@ -29,6 +29,7 @@ if __name__ == "__main__":
     print("Train dataset samples = {}, batches = {}".format(train_data.__len__(), len(train_loader)))
     print("Val dataset samples = {}, batches = {}".format(val_data.__len__(), len(val_loader)))
 
+    # model = DenseNet(num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS).to(device)
     model = CapsuleNet(
         num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS, window_size=WINDOW_SIZE
     ).to(device)

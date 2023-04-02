@@ -486,13 +486,14 @@ class charsiu_predictive_aligner(charsiu_aligner):
         audio = torch.Tensor(audio).unsqueeze(0).to(self.device)
         with torch.no_grad():
             out = self.aligner(audio)
+
+        # out = out.logits.squeeze().detach().cpu().numpy()
+        # return out
+
         pred_ids = torch.argmax(out.logits.squeeze(), dim=-1)
         # pred_ids = pred_ids.detach().cpu().numpy()
         # pred_phones = [self.charsiu_processor.mapping_id2phone(int(i)) for i in pred_ids]
         # pred_phones = seq2duration(pred_phones,resolution=self.resolution)
-
-        # out = out.logits.squeeze().detach().cpu().numpy()
-        # return out
         return pred_ids
 
     def serve(self, audio, save_to, output_format="textgrid"):

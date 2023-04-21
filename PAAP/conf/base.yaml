@@ -61,7 +61,8 @@ acoustic_loss_only: False
 ac_loss_weight: 0.1
 ac_loss_type: l2
 is_phoneme_weighted: True
-phoneme_weight_path: 
+phoneme_weight_estimator:
+phoneme_weight_path:
 stft_loss: True
 stft_sc_factor: .5
 stft_mag_factor: .5

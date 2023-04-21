@@ -1,16 +1,17 @@
-import torch
-import numpy as np
+import inspect
 import os
-import torch.nn.functional as F
+import sys
 
-import os, sys, inspect
+import numpy as np
+import torch
+import torch.nn.functional as F
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
 sys.path.append(os.path.join(parentdir, "charsiu"))
-from charsiu.Charsiu import charsiu_predictive_aligner
 
+from trainer.weight import CapsuleNet, ConvNet, WINDOW_SIZE, NUM_ACOUSTIC_PARAMETERS
 from trainer.estimator import PhonemeWeightEstimator, AcousticEstimator
 
 
@@ -34,7 +35,19 @@ class PAAPLoss(torch.nn.Module):
 
         self.is_phoneme_weighted = self.args.is_phoneme_weighted
         if self.is_phoneme_weighted:
-            if args.phoneme_weight_path is not None:
+            if args.phoneme_weight_estimator == "CapsNet":
+                self.weight = CapsuleNet().to(device)
+                self.weight.load_state_dict(
+                    torch.load(os.path.join(parentdir, args.phoneme_model_path), map_location="cpu")["model_state_dict"]
+                )
+                self.weight.eval()
+            elif args.phoneme_weight_estimator == "ConvNet":
+                self.weight = ConvNet().to(device)
+                self.weight.load_state_dict(
+                    torch.load(os.path.join(parentdir, args.phoneme_model_path), map_location="cpu")["model_state_dict"]
+                )
+                self.weight.eval()
+            elif args.phoneme_weight_path is not None:
                 self.weight = torch.from_numpy(np.load(os.path.join(parentdir, args.phoneme_weight_path))).to(device)
             else:
                 self.weight = PhonemeWeightEstimator().to(device)
@@ -79,9 +92,28 @@ class PAAPLoss(torch.nn.Module):
                     )
                     clean_acoustics = clean_acoustics @ self.weight
                     enhan_acoustics = enhan_acoustics @ self.weight
-                else:
+                elif self.args.phoneme_weight_estimator is None:
                     clean_acoustics = self.weight(clean_acoustics)
                     enhan_acoustics = self.weight(enhan_acoustics)
+                elif self.args.phoneme_weight_estimator == "CapsNet":
+                    with torch.no_grad():
+                        windows = clean_acoustics[..., None].transpose(1, 2)
+                        windows = F.unfold(windows, (WINDOW_SIZE, 1), stride=(WINDOW_SIZE, 1))
+                        windows = windows.reshape(clean_acoustics.shape[0], NUM_ACOUSTIC_PARAMETERS, WINDOW_SIZE, -1)
+                        windows = windows.permute(0, 3, 2, 1).flatten(0, 1)
+                        clean_weight = self.weight(windows, weight=True).mean(0).flatten(1).transpose(0, 1)
+
+                        windows = enhan_acoustics[..., None].transpose(1, 2)
+                        windows = F.unfold(windows, (WINDOW_SIZE, 1), stride=(WINDOW_SIZE, 1))
+                        windows = windows.reshape(enhan_acoustics.shape[0], NUM_ACOUSTIC_PARAMETERS, WINDOW_SIZE, -1)
+                        windows = windows.permute(0, 3, 2, 1).flatten(0, 1)
+                        enhan_weight = self.weight(windows, weight=True).mean(0).flatten(1).transpose(0, 1)
+                    clean_acoustics = clean_acoustics @ clean_weight
+                    enhan_acoustics = enhan_acoustics @ enhan_weight
+                elif self.args.phoneme_weight_estimator == "ConvNet":
+                    with torch.no_grad():
+                        clean_acoustics = self.weight(clean_acoustics, weight=True)
+                        enhan_acoustics = self.weight(enhan_acoustics, weight=True)
 
             if self.args.ac_loss_type == "vector_l2":
                 loss = torch.linalg.vector_norm(enhan_acoustics - clean_acoustics, ord=2, dim=1)

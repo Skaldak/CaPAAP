@@ -6,10 +6,10 @@ class Criterion(nn.Module):
     def forward(self, x, y, pred_x, pred_y, gamma=5e-4):
         # classification_loss = self.cross_entropy_loss(pred_y, y)
         classification_loss = self.margin_loss(pred_y, y)
-        reconstruction_loss = self.mse_loss(pred_x, x)
+        # reconstruction_loss = self.mse_loss(pred_x, x)
 
-        # return classification_loss
-        return classification_loss + gamma * reconstruction_loss
+        return classification_loss
+        # return classification_loss + gamma * reconstruction_loss
 
     def cross_entropy_loss(self, pred, target):
         return F.cross_entropy(pred, F.softmax(target[:, target.shape[1] // 2], dim=-1))

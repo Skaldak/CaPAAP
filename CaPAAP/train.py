@@ -8,7 +8,7 @@ from torchsummaryX import summary
 from config import *
 from criterion import Criterion
 from dataset import AcousticPhoneticDataset
-from model import CapsuleNet
+from model import CapsuleNet, ConvNet
 from utils import train_model, validate_model, save_model, load_model
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -29,10 +29,10 @@ if __name__ == "__main__":
     print("Train dataset samples = {}, batches = {}".format(train_data.__len__(), len(train_loader)))
     print("Val dataset samples = {}, batches = {}".format(val_data.__len__(), len(val_loader)))
 
-    # model = DenseNet(num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS).to(device)
-    model = CapsuleNet(
-        num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS, window_size=WINDOW_SIZE
-    ).to(device)
+    model = ConvNet(num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS).to(device)
+    # model = CapsuleNet(
+    #     num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS, window_size=WINDOW_SIZE
+    # ).to(device)
     print(model)
 
     for data in train_loader:

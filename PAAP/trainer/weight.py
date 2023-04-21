@@ -2,7 +2,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from config import *
+WINDOW_SIZE = 9
+NUM_ACOUSTIC_PARAMETERS = 25
+NUM_PHONEME_LOGITS = 42
 
 
 def squash(x, dim=-1):
@@ -137,9 +139,10 @@ class ConvNet(nn.Module):
 
     def forward(self, x, weight=False):
         x = self.project(x.permute(0, 2, 1))
-        pred_y = F.softmax(self.classifier(x.flatten(1)), dim=-1)
 
         if weight:
+            pred_y = F.softmax(self.classifier(x.transpose(1, 2)), dim=-1)
             return pred_y
         else:
+            pred_y = F.softmax(self.classifier(x.flatten(1)), dim=-1)
             return None, pred_y

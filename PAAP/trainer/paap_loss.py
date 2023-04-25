@@ -11,7 +11,7 @@ parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
 sys.path.append(os.path.join(parentdir, "charsiu"))
 
-from trainer.weight import CapsuleNet, ConvNet, WINDOW_SIZE, NUM_ACOUSTIC_PARAMETERS
+from trainer.weight import CapsuleNet, ConvNet, WINDOW_SIZE, NUM_ACOUSTIC_PARAMETERS, NUM_PHONEME_LOGITS
 from trainer.estimator import PhonemeWeightEstimator, AcousticEstimator
 
 
@@ -35,7 +35,7 @@ class PAAPLoss(torch.nn.Module):
 
         self.is_phoneme_weighted = self.args.is_phoneme_weighted
         if self.is_phoneme_weighted:
-            if args.phoneme_weight_estimator == "CapsNet":
+            if "CapsNet" in args.phoneme_weight_estimator:
                 self.weight = CapsuleNet().to(device)
                 self.weight.load_state_dict(
                     torch.load(os.path.join(parentdir, args.phoneme_model_path), map_location="cpu")["model_state_dict"]
@@ -95,21 +95,30 @@ class PAAPLoss(torch.nn.Module):
                 elif self.args.phoneme_weight_estimator is None:
                     clean_acoustics = self.weight(clean_acoustics)
                     enhan_acoustics = self.weight(enhan_acoustics)
-                elif self.args.phoneme_weight_estimator == "CapsNet":
+                elif "CapsNet" in self.args.phoneme_weight_estimator:
                     with torch.no_grad():
-                        windows = clean_acoustics[..., None].transpose(1, 2)
-                        windows = F.unfold(windows, (WINDOW_SIZE, 1), stride=(WINDOW_SIZE, 1))
-                        windows = windows.reshape(clean_acoustics.shape[0], NUM_ACOUSTIC_PARAMETERS, WINDOW_SIZE, -1)
-                        windows = windows.permute(0, 3, 2, 1).flatten(0, 1)
-                        clean_weight = self.weight(windows, weight=True).mean(0).flatten(1).transpose(0, 1)
 
-                        windows = enhan_acoustics[..., None].transpose(1, 2)
-                        windows = F.unfold(windows, (WINDOW_SIZE, 1), stride=(WINDOW_SIZE, 1))
-                        windows = windows.reshape(enhan_acoustics.shape[0], NUM_ACOUSTIC_PARAMETERS, WINDOW_SIZE, -1)
-                        windows = windows.permute(0, 3, 2, 1).flatten(0, 1)
-                        enhan_weight = self.weight(windows, weight=True).mean(0).flatten(1).transpose(0, 1)
-                    clean_acoustics = clean_acoustics @ clean_weight
-                    enhan_acoustics = enhan_acoustics @ enhan_weight
+                        def sliding_windows(acoustics):
+                            windows = acoustics[..., None].transpose(1, 2)
+                            windows = F.unfold(windows, (WINDOW_SIZE, 1), stride=(WINDOW_SIZE, 1))
+                            windows = windows.reshape(acoustics.shape[0], NUM_ACOUSTIC_PARAMETERS, WINDOW_SIZE, -1)
+                            windows = windows.permute(0, 3, 2, 1).flatten(0, 1)
+
+                            return windows
+
+                        if "Full" in self.args.phoneme_weight_estimator:
+                            clean_acoustics = self.weight(sliding_windows(clean_acoustics), weight=False)[0]
+                            enhan_acoustics = self.weight(sliding_windows(enhan_acoustics), weight=False)[0]
+                        elif "Weight" in self.args.phoneme_weight_estimator:
+                            clean_weight = self.weight(sliding_windows(clean_acoustics), weight=True)
+                            enhan_weight = self.weight(sliding_windows(enhan_acoustics), weight=True)
+                            weight_shape = (clean_acoustics.shape[0], -1, NUM_PHONEME_LOGITS, NUM_ACOUSTIC_PARAMETERS)
+                            clean_weight = clean_weight.reshape(*weight_shape).mean(1).transpose(1, 2)
+                            enhan_weight = enhan_weight.reshape(*weight_shape).mean(1).transpose(1, 2)
+                            clean_acoustics = clean_acoustics @ clean_weight
+                            enhan_acoustics = enhan_acoustics @ enhan_weight
+                        else:
+                            raise NotImplementedError
                 elif self.args.phoneme_weight_estimator == "ConvNet":
                     with torch.no_grad():
                         clean_acoustics = self.weight(clean_acoustics, weight=True)

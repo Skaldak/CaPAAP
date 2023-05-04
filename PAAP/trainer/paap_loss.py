@@ -35,7 +35,12 @@ class PAAPLoss(torch.nn.Module):
 
         self.is_phoneme_weighted = self.args.is_phoneme_weighted
         if self.is_phoneme_weighted:
-            if "CapsNet" in args.phoneme_weight_estimator:
+            if args.phoneme_weight_path is not None:
+                self.weight = torch.from_numpy(np.load(os.path.join(parentdir, args.phoneme_weight_path))).to(device)
+            elif args.phoneme_weight_estimator is None:
+                self.weight = PhonemeWeightEstimator().to(device)
+                self.weight.load_state_dict(torch.load(os.path.join(parentdir, args.phoneme_model_path))["state"])
+            elif "CapsNet" in args.phoneme_weight_estimator:
                 self.weight = CapsuleNet().to(device)
                 self.weight.load_state_dict(
                     torch.load(os.path.join(parentdir, args.phoneme_model_path), map_location="cpu")["model_state_dict"]
@@ -47,11 +52,8 @@ class PAAPLoss(torch.nn.Module):
                     torch.load(os.path.join(parentdir, args.phoneme_model_path), map_location="cpu")["model_state_dict"]
                 )
                 self.weight.eval()
-            elif args.phoneme_weight_path is not None:
-                self.weight = torch.from_numpy(np.load(os.path.join(parentdir, args.phoneme_weight_path))).to(device)
             else:
-                self.weight = PhonemeWeightEstimator().to(device)
-                self.weight.load_state_dict(torch.load(os.path.join(parentdir, args.phoneme_model_path))["state"])
+                raise NotImplementedError
             self.num_phonemes = 42  # TODO: avoid hardcode
 
     def __call__(self, clean_waveform, enhan_waveform):

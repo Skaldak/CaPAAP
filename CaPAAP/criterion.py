@@ -3,13 +3,20 @@ from torch import nn
 
 
 class Criterion(nn.Module):
-    def forward(self, x, y, pred_x, pred_y, gamma=5e-4):
-        # classification_loss = self.cross_entropy_loss(pred_y, y)
-        classification_loss = self.margin_loss(pred_y, y)
-        # reconstruction_loss = self.mse_loss(pred_x, x)
+    def __init__(self, exp):
+        super().__init__()
+        self.exp = exp
 
-        return classification_loss
-        # return classification_loss + gamma * reconstruction_loss
+    def forward(self, x, y, pred_x, pred_y, gamma=5e-4):
+        if self.exp == "conv":
+            classification_loss = self.margin_loss(pred_y, y)
+            return classification_loss
+        elif self.exp == "caps":
+            classification_loss = self.margin_loss(pred_y, y)
+            reconstruction_loss = self.mse_loss(pred_x, x)
+            return classification_loss + gamma * reconstruction_loss
+        else:
+            raise NotImplementedError
 
     def cross_entropy_loss(self, pred, target):
         return F.cross_entropy(pred, F.softmax(target[:, target.shape[1] // 2], dim=-1))

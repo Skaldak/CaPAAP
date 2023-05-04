@@ -1,3 +1,4 @@
+import argparse
 import gc
 import os
 
@@ -15,6 +16,10 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print("Device: ", device)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--exp", type=str, default="convnet")
+    args = parser.parse_args()
+
     os.makedirs(CKPT_DIR, exist_ok=True)
 
     train_data = AcousticPhoneticDataset(split="train")
@@ -29,10 +34,14 @@ if __name__ == "__main__":
     print("Train dataset samples = {}, batches = {}".format(train_data.__len__(), len(train_loader)))
     print("Val dataset samples = {}, batches = {}".format(val_data.__len__(), len(val_loader)))
 
-    model = ConvNet(num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS).to(device)
-    # model = CapsuleNet(
-    #     num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS, window_size=WINDOW_SIZE
-    # ).to(device)
+    if args.exp == "conv":
+        model = ConvNet(num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS).to(device)
+    elif args.exp == "caps":
+        model = CapsuleNet(
+            num_parameters=NUM_ACOUSTIC_PARAMETERS, num_classes=NUM_PHONEME_LOGITS, window_size=WINDOW_SIZE
+        ).to(device)
+    else:
+        raise NotImplementedError
     print(model)
 
     for data in train_loader:
@@ -40,7 +49,7 @@ if __name__ == "__main__":
         summary(model, x.to(device))
         break
 
-    criterion = Criterion()
+    criterion = Criterion(args.exp)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     # optimizer = torch.optim.SGD(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, min_lr=LR * 0.01, factor=0.5)
